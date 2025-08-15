@@ -9,13 +9,42 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use App\Enums\DocumentStatus;
 use Tests\TestCase;
 
-class AiDocumentProcessingTest extends TestCase
+
+class AiDocumentProcessingFeatureTest extends TestCase
 {
     use RefreshDatabase;
 
-    
+    private function createUnMatchingPurchaseOrders()
+    {
+        $orders = [
+            ['po_number' => 'PO-1001', 'vendor' => 'Vendor 100', 'amount' => 1200.00],
+            ['po_number' => 'PO-1002', 'vendor' => 'Vendor 321', 'amount' => 25000.00],
+        ];
+
+        foreach ($orders as $order) {
+            PurchaseOrder::factory()->create($order);
+        }
+    }
+    private function createMatchingPurchaseOrders()
+    {
+        $orders = [
+            ['po_number' => 'PO-1001', 'vendor' => 'Vendor 1', 'amount' => 500.00],
+            ['po_number' => 'PO-1002', 'vendor' => 'Vendor 3', 'amount' => 250.00],
+            ['po_number' => 'PO-12345', 'vendor' => 'Vendor 5', 'amount' => 584.00],
+        ];
+
+        foreach ($orders as $order) {
+            PurchaseOrder::factory()->create($order);
+        }
+    }
+
+
+
+
+    #[\PHPUnit\Framework\Attributes\Test]
     public function user_can_only_upload_pdf_documents(): void
     {
         Storage::fake('local');
@@ -29,7 +58,7 @@ class AiDocumentProcessingTest extends TestCase
         Queue::assertNothingPushed();
     }
 
-    
+    #[\PHPUnit\Framework\Attributes\Test]
     public function user_can_only_upload_pdf_documents_that_are_less_than_or_equal_to_10mb(): void
     {
         Storage::fake('local');
@@ -46,17 +75,14 @@ class AiDocumentProcessingTest extends TestCase
         Queue::assertNothingPushed();
     }
 
-    
+    #[\PHPUnit\Framework\Attributes\Test]
     public function user_extracts_invoice_information_from_document_within_sychronous_time_limit(): void
     {
         Storage::fake('local');
+        
 
-        // Ensure matching PO exists so processing succeeds
-        $po = PurchaseOrder::factory()->create([
-            'vendor' => 'Vendor 5',
-            'amount' => '584.00',
-            'po_number' => 'PO-12345'
-        ]);
+        // Matching PO so processing succeeds
+        $this->createMatchingPurchaseOrders();
 
         $pdf = UploadedFile::fake()->create('invoice.pdf', 100, 'application/pdf');
 
@@ -65,16 +91,16 @@ class AiDocumentProcessingTest extends TestCase
         ]);
 
         $response->assertStatus(200)
-                 ->assertJsonFragment(['status' => 'processed']);
+            ->assertJsonFragment(['status' => DocumentStatus::PROCESSED->value]);
 
         $this->assertDatabaseHas('documents', [
             'vendor' => 'Vendor 5',
             'po_number' => 'PO-12345',
-            'status' => 'processed',
+            'status' => DocumentStatus::PROCESSED->value,
         ]);
     }
 
-    
+    #[\PHPUnit\Framework\Attributes\Test]
     public function user_has_document_processed_in_background_when_synchronous_time_limit_exceeded(): void
     {
         Storage::fake('local');
@@ -100,7 +126,7 @@ class AiDocumentProcessingTest extends TestCase
         Queue::assertPushed(ProcessDocument::class);
     }
 
-    
+    #[\PHPUnit\Framework\Attributes\Test]
     public function user_has_documents_processed_in_background_when_multiple_documents_are_uploaded(): void
     {
         Storage::fake('local');
@@ -117,18 +143,14 @@ class AiDocumentProcessingTest extends TestCase
         Queue::assertPushed(ProcessDocument::class, 2);
     }
 
-    
+    #[\PHPUnit\Framework\Attributes\Test]
     public function document_status_is_updated_to_processed_after_the_corresponding_purchase_order_is_matched(): void
     {
-        $po = PurchaseOrder::factory()->create([
-            'vendor' => 'Vendor 5',
-            'amount' => '584.00',
-            'po_number' => 'PO-12345'
-        ]);
+        $this->createMatchingPurchaseOrders();
 
         $doc = Document::factory()->create([
             'file_name' => 'documents/test.pdf',
-            'status' => 'pending'
+            'status' => DocumentStatus::PENDING->value
         ]);
 
         $processor = app(\App\Services\AiDocumentProcessor::class);
@@ -136,17 +158,18 @@ class AiDocumentProcessingTest extends TestCase
 
         $this->assertDatabaseHas('documents', [
             'id' => $doc->id,
-            'status' => 'processed',
+            'status' => DocumentStatus::PROCESSED->value,
             'po_number' => 'PO-12345'
         ]);
     }
 
-    
+    #[\PHPUnit\Framework\Attributes\Test]
     public function document_status_is_updated_to_failed_after_the_corresponding_purchase_order_is_unmatched(): void
     {
+        $this->createUnMatchingPurchaseOrders();
         $doc = Document::factory()->create([
-            'file_name' => 'documents/test.pdf',
-            'status' => 'pending'
+            'file_name' => 'documents/unmatched.pdf',
+            'status'    => DocumentStatus::PENDING->value
         ]);
 
         $processor = app(\App\Services\AiDocumentProcessor::class);
@@ -156,22 +179,19 @@ class AiDocumentProcessingTest extends TestCase
 
         $this->assertDatabaseHas('documents', [
             'id' => $doc->id,
-            'status' => 'failed'
+            'status' => DocumentStatus::FAILED->value
         ]);
     }
 
-    
+    #[\PHPUnit\Framework\Attributes\Test]
     public function document_details_are_updated_when_purchase_order_is_matched(): void
     {
-        $po = PurchaseOrder::factory()->create([
-            'vendor' => 'Vendor 5',
-            'amount' => '584.00',
-            'po_number' => 'PO-12345'
-        ]);
+        $this->createMatchingPurchaseOrders();
+
 
         $doc = Document::factory()->create([
             'file_name' => 'documents/test.pdf',
-            'status' => 'pending'
+            'status' => DocumentStatus::PENDING->value
         ]);
 
         $processor = app(\App\Services\AiDocumentProcessor::class);
@@ -186,7 +206,7 @@ class AiDocumentProcessingTest extends TestCase
         ]);
     }
 
-    
+    #[\PHPUnit\Framework\Attributes\Test]
     public function test_the_application_returns_a_successful_response(): void
     {
         $response = $this->get('/');
