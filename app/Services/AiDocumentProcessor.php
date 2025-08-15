@@ -4,48 +4,49 @@ namespace App\Services;
 
 use App\Models\PurchaseOrder;
 use App\Models\Document;
+use App\Enums\DocumentStatus;
+use App\DTO\InvoiceDetails;
+use Illuminate\Support\Facades\Log;
+
 
 class AiDocumentProcessor
 {
-  // should return an associative array 
-  // [
-  //   "invoice_number": "INV-5587",
-  //   "total_amount": "584.00",
-  //   "vendor": "Vendor 5"
-  // ]
+  
   public function process(Document $document)
   {
-    // Implement send file to mock AI, match with mock PO
+  
     $documentPath = $document->file_name;
 
-    // Extract text from the document
 
-    // and send it to the mock AI for processing
-
-    // Step 1: Extract text from the document
     $extractedText = $this->extractTextFromDocument($documentPath);
 
-    // Step 2: Send to mock AI for processing (simulate AI response)
-    $aiResponse = $this->retrieveInvoiceDetails($extractedText);
 
-    $document = $document->fresh();
-    $invoice_number = $aiResponse['invoice_number'] ?? null;
+    $invoiceDetails = $this->retrieveInvoiceDetails($extractedText);
+
+    if(!$invoiceDetails) {
+        $document->update(['status' => DocumentStatus::FAILED->value]);
+        throw new \Exception("Failed to retrieve invoice details");
+    }
+
+    $invoice_number = $invoiceDetails->invoice_number;
     if (!$invoice_number) {
-        $document->update(['status' => 'failed']);
+        $document->update(['status' => DocumentStatus::FAILED->value]);
         throw new \Exception("Invoice number not found in AI response");
         
     }
-    $vendor = $aiResponse['vendor'] ?? null;
-    $total_amount = $aiResponse['total_amount'] ?? null;
+    $vendor = $invoiceDetails->vendor;
+    $total_amount = $invoiceDetails->total_amount;
 
-    // locate a purchase order that matches the derived vendor, total_amount
+    // locate a purchase order that matches the derived vendor, and total_amount
     $purchaseOrder = PurchaseOrder::where('vendor', $vendor)
         ->where('amount', $total_amount)
         ->first();
 
+    Log::info("Matching Purchase Order: ", [$purchaseOrder, $vendor, $total_amount, $documentPath, $document->id]);
+
 
     if (!$purchaseOrder) {
-        $document->update(['status' => 'failed']);
+        $document->update(['status' => DocumentStatus::FAILED->value]);
         throw new \Exception("Purchase order not found");
     }
 
@@ -54,33 +55,53 @@ class AiDocumentProcessor
         'vendor' => $vendor,
         'total_amount' => $total_amount,
         'po_number' => $purchaseOrder->po_number,
-        'status' => 'processed',
+        'status' => DocumentStatus::PROCESSED->value,
     ]);
 
     return $document->refresh();
   }
 
 
-  // TODO: Should have try catches and should log errors, like cases of encrycpted document should show the error
-   private function extractTextFromDocument($documentPath)
-   {
-        // Simulate text extraction, in  a real implementation will probably use a library to extract text from the document
-        // this can also be a direct call to the ai model, but its cheaper to extract the text and send to the ai model(as opposed to the document been fed to the model directly and having it extract the text and then get the relevant information)
+    // TODO: Should have try catches and should log errors, like cases of encrypted document should show the error
+    private function extractTextFromDocument($documentPath)
+    {
+        
+        // Just a dummy matching text, in actual implementation will have library to extract text
         return "Invoice Number: INV-5587, Total: 584.00, Vendor: Vendor 5";
     }
 
     // TODO: Implement an exponential backoff strategy for retries
-    private function retrieveInvoiceDetails($text)
+    // The ai model is expected to take in a prompt here and return information that matches the schema presented here
+    private function retrieveInvoiceDetails($text): ?InvoiceDetails
     {
-        // Simulate AI extracting key details using regex
+        $prompt = "
+            Extract the invoice details from the following text: $text 
+
+            The invoice details should be returned in the json format specified below:
+                {
+                    'invoice_number': string,
+                    'total_amount': decimal,
+                    'vendor': string
+                }
+        "; // just an example prompt that will be potentially passed to the ai model
+
+        // Just Simulating AI extracting key details using regex ....
         preg_match('/Invoice Number:\s*([^\s,]+)/i', $text, $invoiceMatch);
         preg_match('/Total:\s*([\d\.]+)/i', $text, $totalMatch);
         preg_match('/Vendor:\s*(.+)$/i', $text, $vendorMatch);
 
-        return [
+        // convert to json just to mimick the expected response from AiModel
+        $json = json_encode([
             "invoice_number" => $invoiceMatch[1] ?? null,
             "total_amount"   => $totalMatch[1] ?? null,
             "vendor"         => $vendorMatch[1] ?? null
-        ];
+        ]);
+
+        return InvoiceDetails::fromJson(json_decode($json, true));
     }
 }
+
+
+
+
+
