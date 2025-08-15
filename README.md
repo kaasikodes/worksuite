@@ -108,8 +108,10 @@ This implementation provides a **document processing feature** with the followin
 -   **Standard API responses** via `APIResponse` Trait.
 -   **Invoice Details DTO** for schema validation of AI model responses.
 -   **`AIMockController`** contains entry logic for document processing.
+-   **`DocumentStatus`** enum contains all the possible status values of the document [pending, processed, failed, abandoned].
 -   **`ProcessDocument`** job handles background processing.
 -   **`AiDocumentProcessor`** service encapsulates core extraction logic.
+-   **`documents`** this is the name of the queue used to process documents in the background. To process the documents locally run `php artisan queue:work --queue=documents`
 -   Basic test coverage in `Tests` folder.
 -   Files remain stored on the server post-processing (pending requirements for post-processing cleanup are provided via business requirements).
 
@@ -132,20 +134,19 @@ This implementation provides a **document processing feature** with the followin
     -   When failed document jobs exceed a set threshold.
     -   When `AiDocumentProcessor` fails to receive a response from the AI model.
 
--   Validate AI model responses (`aiGetDetails`).
--   Handle multiple purchase order matches by duplicating or updating document records (per business rules).
+-   Handle multiple purchase order matches by duplicating or updating document records (dependent on business rules).
 -   Update dashboard in real-time via:
 
     -   Polling, or
     -   Server-Sent Events / WebSockets.
 
 -   Automatically restart workers in production/staging after deployments or crashes.
--   Ensure job retries:
+-   Ensure job retries(This is implemented):
 
     -   At least 3 attempts before marking as failed.
     -   Use **exponential backoff**.
 
--   Prevent **double processing** when multiple servers are involved:
+-   Prevent **double processing** when multiple servers are involved(This is implemented):
 
     -   Use DB transactions & locking.
 
@@ -154,6 +155,7 @@ This implementation provides a **document processing feature** with the followin
     -   All bulk-uploaded documents finish processing.
     -   A single uploaded document finishes processing.
 
--   Consider how to handle **encrypted PDFs**.
+-   Consider how to handle **encrypted PDFs**. (dependent on business rules)
+-   Better decriptive log messages
 -   Apply rate-limiting on extraction routes to prevent abuse.
 -   Further improvements possible but require business requirement discussions.
