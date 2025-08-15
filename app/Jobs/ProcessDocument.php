@@ -23,6 +23,12 @@ class ProcessDocument implements ShouldQueue
 
     public function handle(AiDocumentProcessor $processor)
     {
-        $processor->process($this->document->file_name);
+        $document = $processor->process($this->document);
+
+        if (!$document) {
+            return;
+        }
+
+        
     }
 }

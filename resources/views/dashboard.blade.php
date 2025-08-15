@@ -18,7 +18,7 @@
         </tr>
         @foreach ($documents as $doc)
             <tr>
-                <td>{{ $doc->file_name }}</td>
+                <td>{{ $doc->formatted_file_name }}</td>
                 <td>{{ $doc->invoice_number }}</td>
                 <td>{{ $doc->vendor }}</td>
                 <td>{{ $doc->total_amount }}</td>
