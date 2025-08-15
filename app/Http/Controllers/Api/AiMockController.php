@@ -10,6 +10,8 @@ use App\Traits\ApiResponseTrait;
 use App\Services\AiDocumentProcessor;
 use App\Jobs\ProcessDocument;
 use Illuminate\Support\Facades\Log;
+use App\Enums\DocumentStatus;
+
 
 
 
@@ -61,6 +63,8 @@ class AiMockController extends Controller
            
             $document = Document::create([
                 'file_name' => $fileName,
+                'status' => DocumentStatus::PENDING->value
+
             ]);
 
             $createdDocuments[] = $document;
@@ -80,7 +84,18 @@ class AiMockController extends Controller
     {
        
         $validator = Validator::make($request->all(), [
-            'document' => 'required|file|mimes:pdf|max:10240', 
+            'document' => [
+                'required',
+                'file',
+                'mimes:pdf',
+                'max:10240',
+                function ($attribute, $value, $fail) use ($request) {
+                   
+                    if (is_array($request->file($attribute))) {
+                        $fail('Only one file is allowed.');
+                    }
+                },
+            ],
         ]);
 
         if ($validator->fails()) {
@@ -102,11 +117,14 @@ class AiMockController extends Controller
         
         $document = Document::create([
             'file_name' => $file_name,
+            'status' => DocumentStatus::PENDING->value
         ]);
       
 
+      
 
-        // First try to process file synchronously and if the time limit allowed is exceeded then throw an exception, for time being regardless of the error that occurs in synchronous processing the document will be pushed to queue for document processing
+
+        // First try to process file synchronously and if the time limit allowed is exceeded then throw an exception, for time being, regardless of the error that occurs in synchronous processing the document will be pushed to queue for document processing
         $startTime = microtime(true);
 
         try {
@@ -135,7 +153,7 @@ class AiMockController extends Controller
 
             return $this->successResponse(
                 'Document is being processed in the background',
-                $document->fresh() //just to enable user see that other fields are still not available
+                $document->refresh() //just to enable user see that other fields are still not available
             );
         }
 

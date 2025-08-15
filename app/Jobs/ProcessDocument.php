@@ -20,6 +20,7 @@ class ProcessDocument implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public $tries = 3; //try at least 3 times before marking as abandoned, sending to failed jobs
+    public $maxExceptions = 3;
 
     protected $documentId;
 

@@ -67,7 +67,8 @@ class AiDocumentProcessor
     {
         
         // Just a dummy matching text, in actual implementation will have library to extract text
-        return "Invoice Number: INV-5587, Total: 584.00, Vendor: Vendor 5";
+        // return "Invoice Number: INV-5587, Total: 584.00, Vendor: Vendor 404"; //non present purchase order
+        return "Invoice Number: INV-5587, Total: 584.00, Vendor: Vendor 5"; //present purchase order
     }
 
     // TODO: Implement an exponential backoff strategy for retries
